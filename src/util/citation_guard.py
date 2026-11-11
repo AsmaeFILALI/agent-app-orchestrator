@@ -32,8 +32,8 @@ MODE_OFF: Final = "off"
 VALID_MODES: Final = frozenset({MODE_ENFORCE, MODE_LOG_ONLY, MODE_OFF})
 DEFAULT_MODE: Final = MODE_ENFORCE
 
-# A link longer than this is not buffered further. Its opening bracket is
-# emitted as ordinary text, which leaves the remainder as non-link text.
+# Overlong candidates stop buffering and render their opening bracket as text,
+# not as a Markdown delimiter that could become a link in later fragments.
 MAX_LINK_CHARS: Final = 4096
 
 _LIST_PREFIX = re.compile(r"\s*(?:(?:[-*+\u2022>]|\d+[.)])\s*)*")
@@ -41,6 +41,7 @@ _TRAILING_SENTENCE_END: Final = ".!?;:"
 
 _NEED_MORE: Final = object()
 _NOT_A_LINK: Final = object()
+_OVERLONG_LINK: Final = object()
 
 
 def resolve_mode(value: object) -> str:
@@ -79,10 +80,11 @@ class GuardStats:
     links_seen: int = 0
     unretrieved: int = 0
     repeated: int = 0
+    overlong: int = 0
 
     @property
     def altered(self) -> int:
-        return self.unretrieved + self.repeated
+        return self.unretrieved + self.repeated + self.overlong
 
 
 class CitationGuard:
@@ -118,11 +120,12 @@ class CitationGuard:
     def log_summary(self) -> None:
         if self.stats.altered:
             logger.warning(
-                "[CitationGuard] mode=%s links=%d unretrieved=%d repeated=%d",
+                "[CitationGuard] mode=%s links=%d unretrieved=%d repeated=%d overlong=%d",
                 self.mode,
                 self.stats.links_seen,
                 self.stats.unretrieved,
                 self.stats.repeated,
+                self.stats.overlong,
             )
 
     # -- internals ----------------------------------------------------------
@@ -150,6 +153,13 @@ class CitationGuard:
             if parsed is _NEED_MORE:
                 pos = start
                 break
+            if parsed is _OVERLONG_LINK:
+                self.stats.links_seen += 1
+                self.stats.overlong += 1
+                opening = buf[start:idx] + ("&#91;" if self.mode == MODE_ENFORCE else "[")
+                self._emit(out, opening)
+                pos = idx + 1
+                continue
             if parsed is _NOT_A_LINK:
                 self._emit(out, buf[start : idx + 1])
                 pos = idx + 1
@@ -169,7 +179,9 @@ class CitationGuard:
         limit = idx + MAX_LINK_CHARS
 
         def incomplete(scanned_to: int):
-            if final or scanned_to - idx >= MAX_LINK_CHARS:
+            if scanned_to - idx >= MAX_LINK_CHARS:
+                return _OVERLONG_LINK
+            if final:
                 return _NOT_A_LINK
             return _NEED_MORE
 
@@ -177,7 +189,7 @@ class CitationGuard:
         i = idx
         while i < length:
             if i >= limit:
-                return _NOT_A_LINK
+                return _OVERLONG_LINK
             char = buf[i]
             if char == "\\":
                 i += 2
@@ -203,7 +215,7 @@ class CitationGuard:
         j = label_end + 2
         while j < length:
             if j >= limit:
-                return _NOT_A_LINK
+                return _OVERLONG_LINK
             char = buf[j]
             if char == "\\":
                 j += 2
@@ -272,7 +284,7 @@ def extract_link_destinations(text: str) -> list[str]:
         if idx == -1:
             return found
         parsed = CitationGuard._parse_link(text, idx, final=True)
-        if parsed is _NOT_A_LINK:
+        if parsed is _NOT_A_LINK or parsed is _OVERLONG_LINK:
             pos = idx + 1
             continue
         end, _label, inner = parsed  # type: ignore[misc]

@@ -3,6 +3,7 @@
 import random
 
 import pytest
+from markdown_it import MarkdownIt
 
 from util.citation_guard import (
     MAX_LINK_CHARS,
@@ -244,7 +245,44 @@ def test_a_trailing_exclamation_waits_for_the_next_fragment():
 def test_an_overlong_link_does_not_stall_the_stream():
     g = guard()
     out = g.feed("[" + "a" * (MAX_LINK_CHARS + 50))
-    assert out.startswith("[") and len(out) > MAX_LINK_CHARS
+    assert out.startswith("&#91;") and len(out) > MAX_LINK_CHARS
+
+
+@pytest.mark.parametrize("kind", ["label", "destination", "image"])
+@pytest.mark.parametrize("size", [None, 1, 17, MAX_LINK_CHARS - 1])
+def test_overlong_candidates_cannot_render_as_clickable_links(kind, size):
+    label = "a" * (MAX_LINK_CHARS + 1) if kind != "destination" else "DNS"
+    destination = FAKE + ("x" * MAX_LINK_CHARS if kind == "destination" else "")
+    text = ("!" if kind == "image" else "") + f"[{label}]({destination})"
+    out, g = run(text, allowed=(), size=size)
+    tokens = MarkdownIt().parse(out)
+    assert not [
+        child for token in tokens for child in token.children or []
+        if child.type in {"link_open", "image"}
+    ]
+    assert g.stats.overlong >= 1
+    assert g.stats.altered >= 1
+
+
+@pytest.mark.parametrize("mode", [MODE_LOG_ONLY, MODE_OFF])
+def test_overlong_candidates_preserve_observation_and_off_modes(mode):
+    text = "[" + "a" * (MAX_LINK_CHARS + 1) + f"]({FAKE})"
+    out, _ = run(text, allowed=(), mode=mode, size=17)
+    assert out == text
+
+
+def test_overlong_literalization_is_safe_after_a_preceding_backslash():
+    text = "\\" + "[" + "a" * (MAX_LINK_CHARS + 1) + f"]({FAKE})"
+    out, _ = run(text, allowed=(), size=17)
+    assert not [
+        child for token in MarkdownIt().parse(out) for child in token.children or []
+        if child.type == "link_open"
+    ]
+
+
+def test_history_extraction_ignores_overlong_link_without_crashing():
+    text = "[" + "a" * (MAX_LINK_CHARS + 1) + f"]({FAKE})"
+    assert extract_link_destinations(text) == []
 
 
 # -- modes -------------------------------------------------------------------

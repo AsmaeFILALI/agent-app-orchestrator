@@ -31,3 +31,19 @@ frontend/dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local configuration, credentials, uploads and deployment evidence
+.env*
+**/.env*
+.local/
+**/.local/
+local/
+**/local/
+local.settings.json
+**/local.settings.json
+.files/
+**/.files/
+.logs/
+**/.logs/
+.cache/
+**/.cache/

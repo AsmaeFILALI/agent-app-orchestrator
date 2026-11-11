@@ -4,6 +4,13 @@
 
 ### Fixed
 
+- **Bounded citation parsing.** Neutralize overlong Markdown link/image opening
+  delimiters instead of emitting them as active markup. Keep buffering bounded,
+  report overlong counts, preserve off/log-only behavior and safely ignore
+  oversized history links. Add renderer and split-stream regressions.
+- **Local build-context isolation.** Exclude root/nested environment files,
+  local configuration, upload caches, logs and local state from Docker contexts,
+  including Git-ignored inputs. Add exclusion and synthetic export coverage.
 - **First message skipped retrieval.** The intent classifier could return
   `NO_RETRIEVAL_FOLLOWUP` for the first message of a conversation, so the
   answer was generated without any retrieved context. That label is now only
