@@ -6,6 +6,7 @@ from strategies.retrieval_intent import (
     QUESTION,
     build_retrieval_intent_messages,
     format_recent_history,
+    has_previous_answer,
     parse_retrieval_intent,
 )
 
@@ -23,6 +24,21 @@ def test_no_retrieval_label_can_be_disabled():
         parse_retrieval_intent("NO_RETRIEVAL_FOLLOWUP", enable_no_retrieval=False)
         == QUESTION
     )
+
+
+def test_no_retrieval_label_requires_a_previous_assistant_answer():
+    assert parse_retrieval_intent("NO_RETRIEVAL_FOLLOWUP", has_previous_answer=False) == QUESTION
+    assert parse_retrieval_intent("NO_RETRIEVAL_FOLLOWUP", has_previous_answer=True) == NO_RETRIEVAL
+    assert parse_retrieval_intent("GREETING", has_previous_answer=False) == GREETING
+
+
+def test_has_previous_answer():
+    assert has_previous_answer(None) is False
+    assert has_previous_answer([]) is False
+    assert has_previous_answer([{"role": "user", "text": "hi"}]) is False
+    assert has_previous_answer([{"role": "assistant", "text": "  "}]) is False
+    assert has_previous_answer([{"role": "assistant", "text": "an answer"}]) is True
+    assert has_previous_answer([{"role": "assistant", "content": "an answer"}]) is True
 
 
 def test_parse_retrieval_intent_is_conservative_for_verbose_negative_labels():

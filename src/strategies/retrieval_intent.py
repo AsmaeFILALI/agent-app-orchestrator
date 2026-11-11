@@ -19,7 +19,25 @@ RETRIEVAL_INTENT_SYSTEM_PROMPT = (
 )
 
 
-def parse_retrieval_intent(raw_result: str | None, enable_no_retrieval: bool = True) -> str:
+def has_previous_answer(history: Iterable[Mapping[str, Any]] | None) -> bool:
+    """True when the conversation already contains an assistant answer."""
+    return any(
+        message.get("role") == "assistant"
+        and str(message.get("text") or message.get("content") or "").strip()
+        for message in history or []
+    )
+
+
+def parse_retrieval_intent(
+    raw_result: str | None,
+    enable_no_retrieval: bool = True,
+    has_previous_answer: bool = True,
+) -> str:
+    """Map the classifier label to an intent.
+
+    NO_RETRIEVAL_FOLLOWUP transforms the previous answer, so it is only honoured
+    when one exists. Otherwise the turn is treated as a question and retrieved.
+    """
     result = (raw_result or "").strip().upper()
     first_line = result.splitlines()[0] if result else ""
     label = first_line.strip("`'\" .,:;()[]{}")
@@ -28,7 +46,7 @@ def parse_retrieval_intent(raw_result: str | None, enable_no_retrieval: bool = T
 
     if label.startswith("GREETING"):
         return GREETING
-    if enable_no_retrieval and label.startswith("NO_RETRIEVAL"):
+    if enable_no_retrieval and has_previous_answer and label.startswith("NO_RETRIEVAL"):
         return NO_RETRIEVAL
     return QUESTION
 

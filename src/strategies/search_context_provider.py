@@ -59,6 +59,12 @@ class SearchContextProvider(ContextProvider):
         self._max_content_chars = max_content_chars
         self._get_obo_token = get_obo_token
         self._authorization_mode = authorization_mode
+        self._retrieved_links: set[str] = set()
+
+    @property
+    def retrieved_links(self) -> frozenset[str]:
+        """Links shown to the model in the latest retrieval."""
+        return frozenset(self._retrieved_links)
 
     async def __aenter__(self):
         return self
@@ -71,6 +77,7 @@ class SearchContextProvider(ContextProvider):
         messages: ChatMessage | MutableSequence[ChatMessage],
         **kwargs: Any,
     ) -> Context:
+        self._retrieved_links = set()
         msgs = [messages] if isinstance(messages, ChatMessage) else list(messages)
         user_texts = [
             m.text for m in msgs
@@ -174,6 +181,8 @@ class SearchContextProvider(ContextProvider):
                         if metadata_block:
                             content = f"{metadata_block}\n\n{content}"
                     parts.append(format_context_part(title, link, content))
+                    if link:
+                        self._retrieved_links.add(link)
                     AuditEmitter.default().emit_source(
                         selected=True,
                         source_type="azure_ai_search",

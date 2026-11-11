@@ -42,6 +42,7 @@ from .maf_plugins import UserProfile, UserProfileMemory
 from .retrieval_intent import (
     RETRIEVAL_INTENT_SYSTEM_PROMPT,
     build_retrieval_intent_messages,
+    has_previous_answer,
     parse_retrieval_intent,
 )
 from connectors.foundry_iq_mcp import is_mcp_enabled
@@ -50,6 +51,7 @@ from connectors.search import acquire_obo_search_token
 from connectors.obo import resolve_retrieval_authorization
 from orchestration.agent_events import AgentEventTranslator
 from util.retrieval_backend import get_retrieval_backend, RETRIEVAL_BACKEND_FOUNDRY_IQ
+from util.citation_guard import DEFAULT_MODE, CitationGuard, extract_link_destinations, resolve_mode
 from dependencies import get_config
 from openai import BadRequestError
 
@@ -145,6 +147,9 @@ class MafLiteStrategy(BaseAgentStrategy):
 
         # Reasoning effort for models that support it (e.g. gpt-5-mini)
         self.reasoning_effort = cfg.get("REASONING_EFFORT", "medium")
+
+        # Citation guard: enforce | log_only | off
+        self.citation_guard_mode = resolve_mode(cfg.get("CITATION_GUARD_MODE", DEFAULT_MODE))
 
         # Runtime state
         self._chat_client: Optional[OpenAIChatClient] = None
@@ -349,6 +354,7 @@ class MafLiteStrategy(BaseAgentStrategy):
             intent = parse_retrieval_intent(
                 result,
                 enable_no_retrieval=self.no_retrieval_followup_detection_enabled,
+                has_previous_answer=has_previous_answer(history),
             )
             logging.info("[MafLiteStrategy] intent=%s (raw=%r)", intent, result)
             return intent
@@ -449,6 +455,20 @@ class MafLiteStrategy(BaseAgentStrategy):
             # Stream the agent response
             stream_start = time.time()
             full_response = ""
+            search_provider = self._search_provider if intent == "question" else None
+            # Earlier assistant turns were already validated, so a follow-up
+            # without retrieval may cite what the user has already seen.
+            history_links = [
+                link
+                for msg in history
+                if msg.get("role") == "assistant"
+                for link in extract_link_destinations(msg.get("text") or msg.get("content") or "")
+            ]
+            # Retrieval runs inside run_stream, so read the links lazily.
+            guard = CitationGuard(
+                lambda: [*getattr(search_provider, "retrieved_links", ()), *history_links],
+                mode=self.citation_guard_mode,
+            )
             event_translator = AgentEventTranslator()
             async for chunk in agent.run_stream(
                 input_messages,
@@ -458,8 +478,15 @@ class MafLiteStrategy(BaseAgentStrategy):
                 for event in event_translator.translate(chunk):
                     yield event
                 if chunk.text:
-                    full_response += chunk.text
-                    yield chunk.text
+                    safe_text = guard.feed(chunk.text)
+                    if safe_text:
+                        full_response += safe_text
+                        yield safe_text
+            tail = guard.flush()
+            if tail:
+                full_response += tail
+                yield tail
+            guard.log_summary()
             logging.info("[MafLiteStrategy] agent_stream: %.2fs (response_len=%d)", time.time() - stream_start, len(full_response))
 
             # Persist conversation history locally

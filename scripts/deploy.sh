@@ -24,6 +24,10 @@ success() { echo -e "${GREEN}$*${NC}" >&2; }
 warn() { echo -e "${YELLOW}$*${NC}" >&2; }
 error() { echo -e "${RED}$*${NC}" >&2; }
 
+validate_package_feed() {
+  [[ "$1" =~ ^https://[^/@?#[:space:]]+(/[^?#[:space:]]*)?$ ]]
+}
+
 run_with_retry() {
   local description="$1"
   local max_attempts="$2"
@@ -329,7 +333,18 @@ imageRef="${containerRegistryLoginServer}/azure-gpt-rag/${imageRepository}:${tag
 
 if [[ "$buildMode" == "local" ]]; then
   info "Building Docker image..."
-  docker build --platform linux/amd64 -t "$imageRef" .
+  # Forward corporate package feeds to the build when configured (e.g. PIP_INDEX_URL, NPM_CONFIG_REGISTRY).
+  build_args=()
+  for feed_var in PIP_INDEX_URL NPM_CONFIG_REGISTRY; do
+    if [[ -n "${!feed_var:-}" ]]; then
+      if ! validate_package_feed "${!feed_var}"; then
+        error "$feed_var must be a credential-free HTTPS URL without query or fragment. Authenticated feeds require a separately reviewed build-secret path."
+        exit 1
+      fi
+      build_args+=(--build-arg "${feed_var}=${!feed_var}")
+    fi
+  done
+  docker build --platform linux/amd64 ${build_args[@]+"${build_args[@]}"} -t "$imageRef" .
 
   info "Pushing image..."
   docker push "$imageRef"

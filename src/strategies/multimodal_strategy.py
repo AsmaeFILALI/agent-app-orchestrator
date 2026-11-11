@@ -41,6 +41,7 @@ from .maf_plugins import UserProfile, UserProfileMemory
 from .retrieval_intent import (
     RETRIEVAL_INTENT_SYSTEM_PROMPT,
     build_retrieval_intent_messages,
+    has_previous_answer,
     parse_retrieval_intent,
 )
 from connectors.foundry_iq_mcp import is_mcp_enabled
@@ -550,6 +551,7 @@ class MultimodalStrategy(BaseAgentStrategy):
             intent = parse_retrieval_intent(
                 result,
                 enable_no_retrieval=self.no_retrieval_followup_detection_enabled,
+                has_previous_answer=has_previous_answer(history),
             )
             logging.info("[MultimodalStrategy] intent=%s (raw=%r)", intent, result)
             return intent

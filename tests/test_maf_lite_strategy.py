@@ -129,7 +129,26 @@ class TestMafLiteIntentClassification:
             assert intent == "no_retrieval"
 
     @pytest.mark.asyncio
-    async def test_classify_intent_sends_bounded_history(self):
+    @pytest.mark.parametrize("history", [None, [], [{"role": "user", "text": "earlier question"}]])
+    async def test_no_retrieval_label_without_a_previous_answer_still_retrieves(self, history):
+        from strategies.maf_lite_strategy import MafLiteStrategy
+        from unittest.mock import AsyncMock
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = "NO_RETRIEVAL_FOLLOWUP"
+
+        with patch("strategies.maf_lite_strategy.OpenAIChatClient") as MockClient:
+            mock_client_instance = MagicMock()
+            mock_client_instance._client.chat.completions.create = AsyncMock(return_value=mock_response)
+            MockClient.return_value = mock_client_instance
+
+            s = MafLiteStrategy()
+            intent = await s._classify_intent(
+                "My private endpoint resolves from Azure but not from on-premises.",
+                history=history,
+            )
+            assert intent == "question"
         from strategies.maf_lite_strategy import MafLiteStrategy
         from unittest.mock import AsyncMock
 

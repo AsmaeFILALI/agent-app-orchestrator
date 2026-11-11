@@ -56,6 +56,12 @@ class FoundryIQContextProvider(ContextProvider):
         self._allow_anonymous = allow_anonymous
         self._mcp_enabled = mcp_enabled
         self._user_context = dict(user_context or {})
+        self._retrieved_links: set[str] = set()
+
+    @property
+    def retrieved_links(self) -> frozenset[str]:
+        """Links shown to the model in the latest retrieval (raw and signed)."""
+        return frozenset(self._retrieved_links)
 
     async def __aenter__(self):
         return self
@@ -68,6 +74,7 @@ class FoundryIQContextProvider(ContextProvider):
         messages: ChatMessage | MutableSequence[ChatMessage],
         **kwargs: Any,
     ) -> Context:
+        self._retrieved_links = set()
         msgs = [messages] if isinstance(messages, ChatMessage) else list(messages)
         user_texts = [
             m.text for m in msgs
@@ -142,6 +149,8 @@ class FoundryIQContextProvider(ContextProvider):
                 # below keeps the unsigned link so no SAS token reaches
                 # telemetry.
                 citation_link = await sign_blob_url(link) if link else link
+                if link:
+                    self._retrieved_links.update((link, citation_link))
                 parts.append(format_context_part(title, citation_link, content))
                 AuditEmitter.default().emit_source(
                     selected=True,

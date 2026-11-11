@@ -134,6 +134,12 @@ _REASONING_EFFORT_OPTIONS: List[SettingOption] = [
     SettingOption("high", "High", "Deeper deliberation. Higher latency and cost."),
 ]
 
+_CITATION_GUARD_OPTIONS: List[SettingOption] = [
+    SettingOption("enforce", "Enforce", "Remove citation links that were not retrieved and drop repeated citations."),
+    SettingOption("log_only", "Log only", "Count violations in the logs but leave the answer unchanged."),
+    SettingOption("off", "Off", "Do not inspect citation links."),
+]
+
 
 _RETRIEVAL_BACKEND_OPTIONS: List[SettingOption] = [
     SettingOption(
@@ -221,6 +227,19 @@ SECTIONS: List[SettingSection] = [
                     "effort lets the model deliberate longer before answering."
                 ),
                 options=_REASONING_EFFORT_OPTIONS,
+            ),
+            SettingSpec(
+                key="CITATION_GUARD_MODE",
+                type="enum",
+                default="enforce",
+                label="Citation guard",
+                description=(
+                    "Checks markdown links in streamed answers. Enforce removes "
+                    "links that were not retrieved for the conversation and drops "
+                    "repeated citations of the same source; log only reports them "
+                    "without editing; off disables the check."
+                ),
+                options=_CITATION_GUARD_OPTIONS,
             ),
             SettingSpec(
                 key="CHAT_TEMPERATURE",

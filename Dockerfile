@@ -3,6 +3,8 @@
 # image below and served by FastAPI when ENABLE_DASHBOARD is true.
 # ---------------------------------------------------------------------------
 FROM mcr.microsoft.com/devcontainers/javascript-node:20-bookworm AS frontend-build
+# Optional corporate npm feed (passed with --build-arg by scripts/deploy.*).
+ARG NPM_CONFIG_REGISTRY
 WORKDIR /build
 COPY frontend/package*.json ./frontend/
 RUN cd frontend && npm install --no-audit --no-fund
@@ -48,7 +50,8 @@ WORKDIR /app
 RUN python3 -m venv .venv
 ENV PATH="/app/.venv/bin:$PATH"
 
-# 6. Install Python requirements
+# 6. Install Python requirements (optional corporate PyPI feed via --build-arg)
+ARG PIP_INDEX_URL
 COPY requirements.txt .
 RUN pip install --upgrade pip \
     && pip install -r requirements.txt

@@ -21,6 +21,11 @@ function Write-Blue($msg) { Write-Host $msg -ForegroundColor Cyan }
 function Write-Yellow($msg) { Write-Host $msg -ForegroundColor Yellow }
 function Write-ErrorColored($msg) { Write-Host $msg -ForegroundColor Red }
 
+function Test-PublicPackageFeed {
+    param([string]$Value)
+    return $Value -cmatch '^https://[^/@?#\s]+(?:/[^?#\s]*)?$'
+}
+
 function Invoke-ExternalCommand {
     param(
         [Parameter(Mandatory=$true)][string]$FilePath,
@@ -370,7 +375,20 @@ $fullImageName = "$($values.CONTAINER_REGISTRY_LOGIN_SERVER)/azure-gpt-rag/${ima
 
 if ($buildMode -eq 'local') {
     Write-Blue 'Building Docker image...'
-    Invoke-ExternalCommand -FilePath 'docker' -Arguments @('build','--platform','linux/amd64','-t',$fullImageName,'.') -What 'Docker build' | Out-Null
+    # Forward corporate package feeds to the build when configured (e.g. PIP_INDEX_URL, NPM_CONFIG_REGISTRY).
+    $dockerBuildArgs = @('build','--platform','linux/amd64')
+    foreach ($feedVar in 'PIP_INDEX_URL','NPM_CONFIG_REGISTRY') {
+        $feedValue = [Environment]::GetEnvironmentVariable($feedVar)
+        if ($feedValue) {
+            if (-not (Test-PublicPackageFeed $feedValue)) {
+                Write-ErrorColored "$feedVar must be a credential-free HTTPS URL without query or fragment. Authenticated feeds require a separately reviewed build-secret path."
+                exit 1
+            }
+            $dockerBuildArgs += @('--build-arg', "$feedVar=$feedValue")
+        }
+    }
+    $dockerBuildArgs += @('-t',$fullImageName,'.')
+    Invoke-ExternalCommand -FilePath 'docker' -Arguments $dockerBuildArgs -What 'Docker build' | Out-Null
     Write-Blue 'Pushing image...'
     Invoke-ExternalCommand -FilePath 'docker' -Arguments @('push',$fullImageName) -What 'Docker push' | Out-Null
     Write-Green 'Image pushed.'

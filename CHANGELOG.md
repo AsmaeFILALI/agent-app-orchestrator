@@ -1,5 +1,32 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- **First message skipped retrieval.** The intent classifier could return
+  `NO_RETRIEVAL_FOLLOWUP` for the first message of a conversation, so the
+  answer was generated without any retrieved context. That label is now only
+  honoured when the conversation already contains an assistant answer; the same
+  rule applies to the `maf_lite` and multimodal strategies.
+
+### Added
+
+- **Citation guard.** `CITATION_GUARD_MODE` (`enforce` default, `log_only`,
+  `off`) checks markdown links in the streamed `maf_lite` answer. Links that
+  were not retrieved for the conversation are replaced by their link text, and
+  repeated citations of the same source are dropped or reduced to plain text.
+  The sanitized answer is also what is stored in conversation history. Bare
+  URLs, autolinks and reference-style links are not inspected.
+
+### Changed
+
+- **Local package feed overrides.** Forward optional credential-free HTTPS
+  `PIP_INDEX_URL` and `NPM_CONFIG_REGISTRY` values to local Docker builds.
+  URL user information, query strings and fragments are rejected; authenticated
+  feeds require a separately reviewed build-secret mechanism. ACR Task builds
+  and dependency versions are unchanged.
+
 ## [v5.2.1] - 2026-10-14
 
 ### Fixed
